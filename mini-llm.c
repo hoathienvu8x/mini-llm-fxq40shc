@@ -143,7 +143,33 @@ static void *read_value(FILE *fp, enum gguf_type type) {
             sp->l = strlen(s);
             break;
         }
-        default: break;
+        case GGUF_TYPE_ARRAY: {
+            /* Skip array: read type, length, then skip all elements */
+            uint32_t arr_type = read_u32(fp);
+            uint64_t arr_len = read_u64(fp);
+            for (uint64_t i = 0; i < arr_len; i++) {
+                /* Skip each element based on type */
+                switch (arr_type) {
+                    case GGUF_TYPE_UINT8: case GGUF_TYPE_INT8: case GGUF_TYPE_BOOL:
+                        read_u8(fp); break;
+                    case GGUF_TYPE_UINT16: case GGUF_TYPE_INT16:
+                        read_u16(fp); break;
+                    case GGUF_TYPE_UINT32: case GGUF_TYPE_INT32: case GGUF_TYPE_FLOAT32:
+                        read_u32(fp); break;
+                    case GGUF_TYPE_UINT64: case GGUF_TYPE_INT64: case GGUF_TYPE_FLOAT64:
+                        read_u64(fp); break;
+                    case GGUF_TYPE_STRING:
+                        read_string(fp); break;
+                    default:
+                        fprintf(stderr, "Unknown array element type %d\n", arr_type);
+                        break;
+                }
+            }
+            break;
+        }
+        default:
+            fprintf(stderr, "Unknown KV type %d\n", type);
+            break;
     }
     return p;
 }
