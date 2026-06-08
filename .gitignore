@@ -1,0 +1,6 @@
+mini-llm
+*.o
+*.out
+*.swp
+*~
+.DS_Store
