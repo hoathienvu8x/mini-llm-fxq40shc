@@ -341,6 +341,14 @@ static float *dequant_tensor(gguf_file_t *gf, int idx) {
     float *out = malloc(ne * sizeof(float));
     enum gguf_tensor_type t = gf->tensors[idx].type;
 
+    /* Debug: print first tensor info */
+    static int printed = 0;
+    if (!printed) {
+        fprintf(stderr, "Tensor '%s': type=%d, ne=%zu, raw_sz=%zu\n",
+                gf->tensors[idx].name, t, ne, raw_sz);
+        printed = 1;
+    }
+
     switch (t) {
         case GGUF_F32:
             memcpy(out, raw, ne * 4);
@@ -358,8 +366,10 @@ static float *dequant_tensor(gguf_file_t *gf, int idx) {
             dequant_q8_0(out, raw, ne);
             break;
         default:
-            fprintf(stderr, "Warning: unsupported quant type %d, treating as F32\n", t);
-            memcpy(out, raw, ne * 4);
+            fprintf(stderr, "Warning: unsupported quant type %d for tensor %s\n",
+                    t, gf->tensors[idx].name);
+            /* Zero out instead ofmemcpy which could read past buffer */
+            memset(out, 0, ne * sizeof(float));
             break;
     }
 
