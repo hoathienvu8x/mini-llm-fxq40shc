@@ -247,16 +247,23 @@ static int gguf_find_tensor(gguf_file_t *gf, const char *name) {
     return -1;
 }
 
+static int gguf_key_cmp(const char *name, const char *key) {
+  if (*key == '.') {
+    while (*name != '.') name++;
+  }
+  return strcmp(name, key);
+}
+
 static const char *gguf_get_kv_str(gguf_file_t *gf, const char *key) {
     for (uint64_t i = 0; i < gf->n_kv; i++)
-        if (strcmp(gf->kvs[i].key, key) == 0 && gf->kvs[i].type == GGUF_TYPE_STRING)
+        if (gguf_key_cmp(gf->kvs[i].key, key) == 0 && gf->kvs[i].type == GGUF_TYPE_STRING)
             return gf->kvs[i].value.str.str;
     return NULL;
 }
 
 static int64_t gguf_get_kv_i64(gguf_file_t *gf, const char *key, int64_t def) {
     for (uint64_t i = 0; i < gf->n_kv; i++) {
-        if (strcmp(gf->kvs[i].key, key) == 0) {
+        if (gguf_key_cmp(gf->kvs[i].key, key) == 0) {
             switch (gf->kvs[i].type) {
                 case GGUF_TYPE_INT32: return gf->kvs[i].value.i32;
                 case GGUF_TYPE_INT64: return gf->kvs[i].value.i64;
@@ -573,17 +580,17 @@ static model_t load_model(gguf_file_t *gf) {
     const char *arch = gguf_get_kv_str(gf, "general.architecture");
     if (arch) printf("Architecture: %s\n", arch);
 
-    m.n_layers = (int)gguf_get_kv_i64(gf, "llama.attention.layer_count",
+    m.n_layers = (int)gguf_get_kv_i64(gf, ".attention.layer_count",
                    gguf_get_kv_i64(gf, "block_count", 32));
-    m.n_heads = (int)gguf_get_kv_i64(gf, "llama.attention.head_count",
+    m.n_heads = (int)gguf_get_kv_i64(gf, ".attention.head_count",
                   gguf_get_kv_i64(gf, "attention.head_count", 32));
-    m.n_embd = (int)gguf_get_kv_i64(gf, "llama.embedding_length",
+    m.n_embd = (int)gguf_get_kv_i64(gf, ".embedding_length",
                   gguf_get_kv_i64(gf, "embedding_length", 4096));
-    m.n_ff = (int)gguf_get_kv_i64(gf, "llama.feed_forward_length",
+    m.n_ff = (int)gguf_get_kv_i64(gf, ".feed_forward_length",
                 gguf_get_kv_i64(gf, "feed_forward_length", 11008));
-    m.ctx_len = (int)gguf_get_kv_i64(gf, "llama.context_length",
+    m.ctx_len = (int)gguf_get_kv_i64(gf, ".context_length",
                    gguf_get_kv_i64(gf, "context_length", 2048));
-    m.n_kv_heads = (int)gguf_get_kv_i64(gf, "llama.attention.head_count_kv",
+    m.n_kv_heads = (int)gguf_get_kv_i64(gf, ".attention.head_count_kv",
                       gguf_get_kv_i64(gf, "attention.head_count_kv", m.n_heads));
     m.head_dim = m.n_embd / m.n_heads;
 
