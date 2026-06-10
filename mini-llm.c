@@ -485,6 +485,7 @@ typedef struct {
 
 static tokenizer_t load_vocab(gguf_file_t *gf) {
     tokenizer_t tok = {0};
+    char buf[255] = {0};
 
     /* Simple fallback tokenizer - works with any model */
     tok.n_vocab = 32000;
@@ -504,8 +505,8 @@ static tokenizer_t load_vocab(gguf_file_t *gf) {
 
     /* Generate placeholder tokens */
     for (int i = 0; i < tok.n_vocab; i++) {
-        tok.tokens[i] = malloc(8);
-        snprintf(tok.tokens[i], 8, "<%d>", i);
+        snprintf(buf, sizeof(buf), "<%d>", i);
+        tok.tokens[i] = strdup(buf);
     }
 
     printf("Vocab: %d tokens\n", tok.n_vocab);
