@@ -69,30 +69,34 @@ enum gguf_tensor_type {
 };
 
 typedef struct {
-    char *key;
-    enum gguf_type type;
-    union {
-      uint8_t  u8;
-      int8_t   i8;
-      uint16_t u16;
-      int16_t  i16;
-      uint32_t u32;
-      int32_t  i32;
-      float    f32;
-      int      b;
-      uint64_t u64;
-      int64_t  i64;
-      double   f64;
-      struct {
-        char *str;
-        size_t len;
-      } str;
-      struct {
-        enum gguf_type type;
-        size_t len;
-        void *data;
-      } arr;
-    } value;
+  char *str;
+  size_t len;
+} gguf_string_t;
+
+typedef struct {
+  enum gguf_type type;
+  size_t len;
+  void *data;
+} gguf_list_t;
+
+typedef struct {
+  char *key;
+  enum gguf_type type;
+  union {
+    uint8_t  u8;
+    int8_t   i8;
+    uint16_t u16;
+    int16_t  i16;
+    uint32_t u32;
+    int32_t  i32;
+    float    f32;
+    int      b;
+    uint64_t u64;
+    int64_t  i64;
+    double   f64;
+    gguf_string_t str;
+    gguf_list_t arr;
+  } value;
 } gguf_kv_t;
 
 typedef struct {
@@ -152,10 +156,12 @@ static uint8_t read_u8(FILE *fp) {
 static char *read_string(FILE *fp) {
   uint64_t len = read_u64(fp);
   char *str = malloc(len + 1);
-  if (len > 0) {
-    fread(str, 1, len, fp);
+  if (str) {
+    if (len > 0) {
+      fread(str, 1, len, fp);
+    }
+    str[len] = 0;
   }
-  str[len] = 0;
   return str;
 }
 
@@ -214,12 +220,9 @@ static void *read_value(FILE *fp, enum gguf_type type) {
     }
     case GGUF_TYPE_STRING: {
       char *s = read_string(fp);
-      struct {
-        char *s;
-        size_t l;
-      } *sp = p;
-      sp->s = s;
-      sp->l = strlen(s);
+      gguf_string_t *sp = p;
+      sp->str = s;
+      sp->len = s ? strlen(s) : 0;
       break;
     }
     case GGUF_TYPE_ARRAY: {
@@ -253,7 +256,8 @@ static void *read_value(FILE *fp, enum gguf_type type) {
             break;
           }
           case GGUF_TYPE_STRING: {
-            read_string(fp);
+            char *s = read_string(fp);
+            if (s) free(s);
             break;
           }
           default: {
@@ -626,6 +630,7 @@ typedef struct {
 
 static tokenizer_t load_vocab(gguf_file_t *gf) {
   tokenizer_t tok = {0};
+  char buf[255] = {0};
 
   /* Simple fallback tokenizer - works with any model */
   tok.n_vocab = 32000;
@@ -647,8 +652,8 @@ static tokenizer_t load_vocab(gguf_file_t *gf) {
 
   /* Generate placeholder tokens */
   for (int i = 0; i < tok.n_vocab; i++) {
-    tok.tokens[i] = malloc(8);
-    snprintf(tok.tokens[i], 8, "<%d>", i);
+    snprintf(buf, sizeof(buf), "<%d>", i);
+    tok.tokens[i] = strdup(buf);    
   }
 
   printf("Vocab: %d tokens\n", tok.n_vocab);
