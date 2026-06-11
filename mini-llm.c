@@ -117,213 +117,277 @@ typedef struct {
   size_t data_offset;
 } gguf_file_t;
 
-static uint64_t read_u64(FILE *fp) {
-  uint64_t v;
-  fread(&v, 1, 8, fp);
-  return v;
+static int read_u64(FILE *fp, uint64_t *v) {
+  if (fp == NULL || v == NULL) return -1;
+  if (fread(v, sizeof(uint64_t), 1, fp) != 1) return -1;
+  return 0;
 }
-static uint32_t read_u32(FILE *fp) {
-  uint32_t v;
-  fread(&v, 1, 4, fp);
-  return v;
+static int read_i64(FILE *fp, int64_t *v) {
+  if (fp == NULL || v == NULL) return -1;
+  if (fread(v, sizeof(int64_t), 1, fp) != 1) return -1;
+  return 0;
 }
-static uint16_t read_u16(FILE *fp) {
-  uint16_t v;
-  fread(&v, 1, 2, fp);
-  return v;
+static int read_i32(FILE *fp, int32_t *v) {
+  if (fp == NULL || v == NULL) return -1;
+  if (fread(v, sizeof(int32_t), 1, fp) != 1) return -1;
+  return 0;
 }
-static int16_t read_i16(FILE *fp) {
-  int16_t v;
-  fread(&v, 1, 2, fp);
-  return v;
+static int read_u32(FILE *fp, uint32_t *v) {
+  if (fp == NULL || v == NULL) return -1;
+  if (fread(v, sizeof(uint32_t), 1, fp) != 1) return -1;
+  return 0;
 }
-static float read_f32(FILE *fp) {
-  float v;
-  fread(&v, 1, 4, fp);
-  return v;
+static int read_u16(FILE *fp, uint16_t *v) {
+  if (fp == NULL || v == NULL) return -1;
+  if (fread(v, sizeof(uint16_t), 1, fp) != 1) return -1;
+  return 0;
 }
-static double read_f64(FILE *fp) {
-  double v;
-  fread(&v, 1, 8, fp);
-  return v;
+static int read_i16(FILE *fp, int16_t *v) {
+  if (fp == NULL || v == NULL) return -1;
+  if (fread(v, sizeof(int16_t), 1, fp) != 1) return -1;
+  return 0;
 }
-static uint8_t read_u8(FILE *fp) {
-  uint8_t v;
-  fread(&v, 1, 1, fp);
-  return v;
+static int read_f32(FILE *fp, float *v) {
+  if (fp == NULL || v == NULL) return -1;
+  if (fread(v, sizeof(float), 1, fp) != 1) return -1;
+  return 0;
+}
+static int read_f64(FILE *fp, double *v) {
+  if (fp == NULL || v == NULL) return -1;
+  if (fread(v, sizeof(double), 1, fp) != 1) return -1;
+  return 0;
+}
+static int read_u8(FILE *fp, uint8_t *v) {
+  if (fp == NULL || v == NULL) return -1;
+  if (fread(v, sizeof(uint8_t), 1, fp) != 1) return -1;
+  return 0;
 }
 
-static char *read_string(FILE *fp) {
-  uint64_t len = read_u64(fp);
-  char *str = malloc(len + 1);
-  if (str) {
-    if (len > 0) {
-      fread(str, 1, len, fp);
+static int read_string(FILE *fp, gguf_string_t *s) {
+  uint64_t len = 0;
+  if (fp == NULL || s == NULL || read_u64(fp, &len)) return -1;
+  
+  s->str = malloc(len + 1);
+  if (s->str == NULL) return -1; // SỬA: Trả về lỗi ngay nếu malloc oom
+
+  if (len > 0) {
+    if (fread(s->str, len, 1, fp) != 1) {
+      free(s->str);
+      s->str = NULL;
+      return -1;
     }
-    str[len] = 0;
   }
-  return str;
+  s->str[len] = '\0';
+  s->len = (size_t)len;
+  return 0;
 }
 
-static void *read_value(FILE *fp, enum gguf_type type) {
-  void *p = calloc(1, 64);
+static int read_value(FILE *fp, enum gguf_type type, void **p) {
+  if (fp == NULL || p == NULL) return -1;
+
   switch (type) {
-    case GGUF_TYPE_UINT8: {
-      *(uint8_t*)p = read_u8(fp);
-      break;
-    }
-    case GGUF_TYPE_INT8: {
-      int8_t v;
-      fread(&v,1,1,fp);
-      *(int8_t*)p = v;
-      break;
-    }
-    case GGUF_TYPE_UINT16: {
-      *(uint16_t*)p = read_u16(fp);
-      break;
-    }
-    case GGUF_TYPE_INT16: {
-      *(int16_t*)p = read_i16(fp);
-      break;
-    }
-    case GGUF_TYPE_UINT32: {
-      *(uint32_t*)p = read_u32(fp);
-      break;
-    }
-    case GGUF_TYPE_INT32: {
-      int32_t v;
-      fread(&v,1,4,fp);
-      *(int32_t*)p = v;
-      break;
-    }
-    case GGUF_TYPE_FLOAT32: {
-      *(float*)p = read_f32(fp);
-      break;
-    }
-    case GGUF_TYPE_BOOL: {
-      *(int*)p = read_u8(fp);
-      break;
-    }
-    case GGUF_TYPE_UINT64: {
-      *(uint64_t*)p = read_u64(fp);
-      break;
-    }
-    case GGUF_TYPE_INT64: {
-      int64_t v;
-      fread(&v,1,8,fp);
-      *(int64_t*)p = v;
-      break;
-    }
-    case GGUF_TYPE_FLOAT64: {
-      *(double*)p = read_f64(fp);
-      break;
-    }
-    case GGUF_TYPE_STRING: {
-      char *s = read_string(fp);
-      gguf_string_t *sp = p;
-      sp->str = s;
-      sp->len = s ? strlen(s) : 0;
-      break;
-    }
+    case GGUF_TYPE_UINT8:   return read_u8(fp, (uint8_t *)*p);
+    case GGUF_TYPE_BOOL:    return read_u8(fp, (uint8_t *)*p);
+    case GGUF_TYPE_INT8:    if (fread(*p, sizeof(int8_t), 1, fp) != 1) return -1; break;
+    
+    case GGUF_TYPE_UINT16:  return read_u16(fp, (uint16_t *)*p);
+    case GGUF_TYPE_INT16:   return read_i16(fp, (int16_t *)*p);
+    
+    case GGUF_TYPE_UINT32:  return read_u32(fp, (uint32_t *)*p);
+    case GGUF_TYPE_INT32:   return read_i32(fp, (int32_t *)*p);
+    case GGUF_TYPE_FLOAT32: return read_f32(fp, (float *)*p);
+    
+    case GGUF_TYPE_UINT64:  return read_u64(fp, (uint64_t *)*p);
+    case GGUF_TYPE_INT64:   return read_i64(fp, (int64_t *)*p);
+    case GGUF_TYPE_FLOAT64: return read_f64(fp, (double *)*p);
+    
+    case GGUF_TYPE_STRING:  return read_string(fp, (gguf_string_t *)*p);
+    
     case GGUF_TYPE_ARRAY: {
-      /* Skip array: read type, length, then skip all elements */
-      uint32_t arr_type = read_u32(fp);
-      uint64_t arr_len = read_u64(fp);
+      uint32_t arr_type = 0;
+      uint64_t arr_len = 0;
+      if (read_u32(fp, &arr_type) || read_u64(fp, &arr_len)) return -1;
+
+      union {
+          uint64_t u64; int64_t i64; double f64;
+          uint32_t u32; int32_t i32; float f32;
+          uint16_t u16; int16_t i16;
+          uint8_t u8;   int8_t i8;
+      } dummy;
+
       for (uint64_t i = 0; i < arr_len; i++) {
-        /* Skip each element based on type */
         switch (arr_type) {
           case GGUF_TYPE_UINT8:
           case GGUF_TYPE_INT8:
           case GGUF_TYPE_BOOL: {
-            read_u8(fp);
+            if (fread(&dummy.u8, 1, 1, fp) != 1) return -1;
             break;
           }
           case GGUF_TYPE_UINT16:
           case GGUF_TYPE_INT16: {
-            read_u16(fp);
+            if (read_u16(fp, &dummy.u16)) return -1;
             break;
           }
           case GGUF_TYPE_UINT32:
           case GGUF_TYPE_INT32:
           case GGUF_TYPE_FLOAT32: {
-            read_u32(fp);
+            if (fread(&dummy.u32, 4, 1, fp) != 1) return -1; 
             break;
           }
           case GGUF_TYPE_UINT64:
           case GGUF_TYPE_INT64:
           case GGUF_TYPE_FLOAT64: {
-            read_u64(fp);
+            if (read_u64(fp, &dummy.u64)) return -1;
             break;
           }
           case GGUF_TYPE_STRING: {
-            char *s = read_string(fp);
-            if (s) free(s);
+            gguf_string_t s = {0};
+            if (read_string(fp, &s)) return -1;
+            free(s.str);
             break;
           }
-          default: {
-            fprintf(
-              stderr, "Unknown array element type %d\n", arr_type
-            );
-            break;
-          }
+          default:
+            fprintf(stderr, "Unknown array element type %d\n", arr_type);
+            return -1;
         }
       }
       break;
     }
-    default: {
+    default:
       fprintf(stderr, "Unknown KV type %d\n", type);
-      break;
-    }
+      return -1;
   }
-  return p;
+  return 0;
 }
 
-static gguf_file_t gguf_open(const char *path) {
-  gguf_file_t gf = {0};
-  gf.fp = fopen(path, "rb");
-  if (!gf.fp) {
-    fprintf(stderr, "Cannot open %s\n", path);
-    exit(1);
+static int  gguf_open(const char *path, gguf_file_t *gf) {
+  memset(gf, 0, sizeof(gguf_file_t));
+
+  gf->fp = fopen(path, "rb");
+  if (!gf->fp) {
+    fprintf(stderr, "Error: Cannot open %s\n", path);
+    return -1;
   }
 
-  uint32_t magic = read_u32(gf.fp);
-  if (magic != GGUF_MAGIC) {
-    fprintf(stderr, "Bad magic: 0x%x\n", magic);
-    exit(1);
+  uint32_t magic = 0;
+  if (read_u32(gf->fp, &magic) != 0 || magic != GGUF_MAGIC) {
+    fprintf(stderr, "Error: Bad magic: 0x%x\n", magic);
+    fclose(gf->fp);
+    return -1;
   }
-  gf.version = read_u32(gf.fp);
-  gf.n_tensors = read_u64(gf.fp);
-  gf.n_kv = read_u64(gf.fp);
+
+  if (
+    read_u32(gf->fp, &gf->version) != 0 ||
+    read_u64(gf->fp, &gf->n_tensors) != 0 ||
+    read_u64(gf->fp, &gf->n_kv) != 0
+  ) {
+    fprintf(stderr, "Error: Failed to read GGUF header\n");
+    fclose(gf->fp);
+    return -1;
+  }
 
   printf(
-    "GGUF v%d, %llu tensors, %llu metadata\n", gf.version,
-    (unsigned long long)gf.n_tensors, (unsigned long long)gf.n_kv
+    "GGUF v%d, %llu tensors, %llu metadata\n", gf->version,
+    (unsigned long long)gf->n_tensors, (unsigned long long)gf->n_kv
   );
 
-  gf.kvs = calloc(gf.n_kv, sizeof(gguf_kv_t));
-  for (uint64_t i = 0; i < gf.n_kv; i++) {
-    gf.kvs[i].key = read_string(gf.fp);
-    gf.kvs[i].type = read_u32(gf.fp);
-    void *vp = read_value(gf.fp, gf.kvs[i].type);
-    memcpy(&gf.kvs[i].value, vp, 64);
-    free(vp);
+  gf->kvs = calloc(gf->n_kv, sizeof(gguf_kv_t));
+  if (gf->n_kv > 0 && !gf->kvs) {
+    fprintf(stderr, "Error: Memory allocation failed for KVs\n");
+    fclose(gf->fp);
+    return -1;
   }
 
-  gf.tensors = calloc(gf.n_tensors, sizeof(gguf_tensor_info_t));
-  for (uint64_t i = 0; i < gf.n_tensors; i++) {
-    gf.tensors[i].name = read_string(gf.fp);
-    gf.tensors[i].n_dims = read_u32(gf.fp);
-    gf.tensors[i].dims = calloc(gf.tensors[i].n_dims, sizeof(uint64_t));
-    for (uint32_t d = 0; d < gf.tensors[i].n_dims; d++) {
-      gf.tensors[i].dims[d] = read_u64(gf.fp);
+  for (uint64_t i = 0; i < gf->n_kv; i++) {
+    gguf_string_t temp_key = {0};
+    if (read_string(gf->fp, &temp_key) != 0) {
+      fprintf(
+        stderr, "Error: Failed to read KV key at index %llu\n",
+        (unsigned long long)i
+      );
+      return -1;
     }
-    gf.tensors[i].type = read_u32(gf.fp);
-    gf.tensors[i].offset = read_u64(gf.fp);
+    gf->kvs[i].key = temp_key.str;
+
+    uint32_t kv_type = 0;
+    if (read_u32(gf->fp, &kv_type) != 0) {
+      fprintf(
+        stderr, "Error: Failed to read KV type for key: %s\n", gf->kvs[i].key
+      );
+      return -1;
+    }
+    gf->kvs[i].type = (enum gguf_type)kv_type;
+    void *val_ptr = &gf->kvs[i].value;
+    if (read_value(gf->fp, gf->kvs[i].type, &val_ptr) != 0) {
+      fprintf(
+        stderr, "Error: Failed to read KV value for key: %s\n",
+        gf->kvs[i].key
+      );
+      return -1;
+    }
   }
 
-  long pos = ftell(gf.fp);
-  gf.data_offset = (pos + 31) & ~31UL;
-  return gf;
+  gf->tensors = calloc(gf->n_tensors, sizeof(gguf_tensor_info_t));
+  if (gf->n_tensors > 0 && !gf->tensors) {
+    fprintf(stderr, "Error: Memory allocation failed for Tensors\n");
+    return -1;
+  }
+
+  for (uint64_t i = 0; i < gf->n_tensors; i++) {
+    gguf_string_t temp_name = {0};
+    if (read_string(gf->fp, &temp_name) != 0) {
+      fprintf(
+        stderr, "Error: Failed to read tensor name at index %llu\n",
+        (unsigned long long)i
+      );
+      return -1;
+    }
+    gf->tensors[i].name = temp_name.str;
+
+    if (read_u32(gf->fp, &gf->tensors[i].n_dims) != 0) {
+      fprintf(
+        stderr, "Error: Failed to read n_dims for tensor: %s\n",
+        gf->tensors[i].name
+      );
+      return -1;
+    }
+
+    gf->tensors[i].dims = calloc(gf->tensors[i].n_dims, sizeof(uint64_t));
+    if (gf->tensors[i].n_dims > 0 && !gf->tensors[i].dims) {
+      fprintf(stderr, "Error: Memory allocation failed for tensor dims\n");
+      return -1;
+    }
+
+    for (uint32_t d = 0; d < gf->tensors[i].n_dims; d++) {
+      if (read_u64(gf->fp, &gf->tensors[i].dims[d]) != 0) {
+        fprintf(
+          stderr, "Error: Failed to read dim %d for tensor: %s\n",
+          d, gf->tensors[i].name
+        );
+        return -1;
+      }
+    }
+
+    if (
+      read_u32(gf->fp, &gf->tensors[i].type) != 0 ||
+      read_u64(gf->fp, &gf->tensors[i].offset) != 0
+    ) {
+      fprintf(
+        stderr, "Error: Failed to read type/offset for tensor: %s\n",
+        gf->tensors[i].name
+      );
+      return -1;
+    }
+  }
+
+  long pos = ftell(gf->fp);
+  if (pos == -1) {
+    fprintf(stderr, "Error: ftell failed\n");
+    return -1;
+  }
+  gf->data_offset = ((size_t)pos + 31) & ~31UL;
+
+  return 0;
 }
 
 static size_t gguf_tensor_size(gguf_file_t *gf, int idx) {
@@ -1209,7 +1273,10 @@ int main(int argc, char **argv) {
   }
 
   printf("\nLoading: %s\n", argv[1]);
-  gguf_file_t gf = gguf_open(argv[1]);
+  gguf_file_t gf = {0};
+  if (gguf_open(argv[1], &gf)) {
+    return -1;
+  }
 
   model_t model = load_model(&gf);
   tokenizer_t tok = load_vocab(&gf);
